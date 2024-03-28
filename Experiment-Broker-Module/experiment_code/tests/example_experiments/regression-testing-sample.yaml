@@ -39,7 +39,15 @@ method:
         source_key: ${source_key}
         target_bucket: ${target_bucket}
   - type: action
-    name: Wait till sfn exec complete
+    name: Wait until previous sfn exececution completes, initiate next
+    provider:
+      type: python
+      module: vr_regression_testing.general.actions
+      func: sfn_handoff
+      arguments:
+        next_sfn_param: Wait2
+  - type: action
+    name: Final wait
     provider:
       type: python
       module: vr_regression_testing.general.actions

@@ -13,11 +13,11 @@ def handler(event, context):
     
     s3 = boto3.client("s3")
     obj = s3.get_object(Bucket=bucket_name, Key=key)
-    file_content = obj["Body"].read().decode('utf-8')
-    f = json.loads(file_content)
+    file_content = obj["Body"].read()
+    f = json.loads(file_content.decode('utf-8'))
     
     exp = f['experiment']
-    logger.info(exp)
+    logger.info(f)
 
     steps = []
     for step in f['run']:
@@ -27,8 +27,8 @@ def handler(event, context):
         }
         steps.append(step_)
         
-    exec_key = "XI-36" if not "jira_exec_ticket" in exp["configuration"].keys() else exp["configuration"]["jira_exec_ticket"] 
-    test_ticket = "XI-32" if not "jira_test_ticket" in exp["configuration"].keys() else exp["configuration"]["jira_test_ticket"]
+    exec_key = "XI-36" if not "jira_exec_ticket" in f.keys() else f["jira_exec_ticket"]
+    test_ticket = "XI-32" if not "jira_test_ticket" in f.keys() else f["jira_test_ticket"] 
         
     test_results = {
         "testExecutionKey":exec_key,
@@ -45,8 +45,8 @@ def handler(event, context):
             "status":"PASSED" if f['status'] == 'completed' else "FAILED",
             "evidences":[
                 {
-                    "data": base64.b64encode(obj["Body"].read()).decode('utf-8'),
-                    "filename":f"{key}.txt",
+                    "data": base64.b64encode(file_content).decode('utf-8'),
+                    "filename":key,
                     "contentType":"text/plain"
                 }
             ]

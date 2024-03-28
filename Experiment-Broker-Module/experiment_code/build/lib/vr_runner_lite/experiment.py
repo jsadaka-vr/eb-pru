@@ -28,8 +28,6 @@ class InvalidExperiment(ChaosException):
 class InvalidSource(ChaosException):
     pass
 
-class ActivityFailed(ChaosException):
-    pass
 
 def validate_activity(activity: dict):
     if not activity:

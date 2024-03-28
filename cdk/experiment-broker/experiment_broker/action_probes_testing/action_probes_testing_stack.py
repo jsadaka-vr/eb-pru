@@ -37,65 +37,70 @@ class ActionProbesTestingStack(Stack):
             event_bridge_enabled=True
         )
 
-        self.create_wait_machine_flow(begin_bucket.bucket_name)
 
-    def create_wait_machine_flow(self, bucket_name: str):
-        sfn_role = _iam.Role(
+        self.sfn_role = _iam.Role(
             self,
             "EBTestingStateMachine",
             assumed_by=_iam.ServicePrincipal("states.amazonaws.com"),
         )
         
-        sfn_role.add_managed_policy(
+        self.sfn_role.add_managed_policy(
             _iam.ManagedPolicy.from_aws_managed_policy_name("service-role/AWSLambdaRole")
         )
 
-        sfn_test_lambda = _lambda.Function(
-            self,
-            'SFNTestLambda',
-            runtime=_lambda.Runtime.PYTHON_3_10,
-            code=_lambda.Code.from_asset('experiment_broker/action_probes_testing/lambda'),
-            handler='main.lambda_handler',
-            function_name='ebap-statemachine-test',
-        )
-        
-        sfn_lambda_task = tasks.LambdaInvoke(
-            self,
-            "InvokeLambdaTask",
-            lambda_function=sfn_test_lambda,
-            payload_response_only=True,
-        )
+        self.create_wait_machine_flow(name='Wait',simple_eval_lambda=True, bucket_name=begin_bucket.bucket_name)
+        self.create_wait_machine_flow(name='Wait2')
 
-        wait = sfn.Wait(self, "Wait", time=sfn.WaitTime.duration(Duration.minutes(3)))
+    def create_wait_machine_flow(self, name:str, simple_eval_lambda:bool=False, bucket_name:str=''):
 
-        wait.next(sfn_lambda_task)
-
+        wait = sfn.Wait(self, name, time=sfn.WaitTime.duration(Duration.minutes(1)))
         wait_machine = sfn.StateMachine(
             self,
-            "WaitMachine",
+            f"{name}Machine",
             definition_body=sfn.DefinitionBody.from_chainable(wait),
-            role=sfn_role,
+            role=self.sfn_role,
         )
-        
+
         Tags.of(wait_machine).add("Type", "RegressionTesting")
-
-        sfn_test_lambda.grant_invoke(wait_machine)
-
-        events.Rule(self, "UploadRule",
-            event_pattern=events.EventPattern(
-                source=["aws.s3"],
-                detail_type=["Object Created"],
-                detail={
-                        "bucket": {
-                            "name": [bucket_name]
-                        }
-                    }
-            ),
-            targets=[targets.SfnStateMachine(wait_machine)]
-        )
-
+        
         state_machine_arn_param = ssm.StringParameter(
-            self, "StateMachineArnParameter",
-            parameter_name="/RegressionTesting/WaitMachineArn", 
+            self, f"{name}MachineArnParameter",
+            parameter_name=f"/RegressionTesting/StateMachineArns/{name}", 
             string_value=wait_machine.state_machine_arn
-        )
+        )    
+
+        if simple_eval_lambda:
+            eval_lambda = _lambda.Function(
+                self,
+                f'{name}SFNTestLambda',
+                runtime=_lambda.Runtime.PYTHON_3_10,
+                code=_lambda.Code.from_asset('experiment_broker/action_probes_testing/lambda'),
+                handler='main.lambda_handler',
+                function_name=f'ebap-statemachine-test-{name}',
+            )
+            
+            lambda_task = tasks.LambdaInvoke(
+                self,
+                f"{name}InvokeLambdaTask",
+                lambda_function=eval_lambda,
+                payload_response_only=True,
+            )
+
+            wait.next(lambda_task)
+
+            eval_lambda.grant_invoke(wait_machine)        
+
+        if bucket_name:
+
+            events.Rule(self, f"{name}UploadRule",
+                event_pattern=events.EventPattern(
+                    source=["aws.s3"],
+                    detail_type=["Object Created"],
+                    detail={
+                            "bucket": {
+                                "name": [bucket_name]
+                            }
+                        }
+                ),
+                targets=[targets.SfnStateMachine(wait_machine)]
+            )

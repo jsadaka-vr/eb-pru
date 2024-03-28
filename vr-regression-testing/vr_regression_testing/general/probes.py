@@ -24,20 +24,18 @@ def get_most_recent_running_execution_arn(sfn_arn: str, client: boto3.client):
         logger.error(f"Error occurred: {e}")
         return None
     
-def get_current_sfn():
-    if 'CURRENT_SFN' not in os.environ:
-        return get_ssm_parameter('/RegressionTesting/WaitMachineArn') # starting sfn
-    else:
-        # logic to determine current sfn?
 
-        return os.environ["CURRENT_SFN"]
-    
 def identify_sfn_execution(retry_num: int, retry_interval: int=5):
+    if 'CURRENT_EXECUTION_ARN' in os.environ:
+        logging.info(f"CURRENT_EXECUTION_ARN already present. Value is {os.getenv('CURRENT_EXECUTION_ARN')}")
+        return True
+      
     if 'JOB_ID' in os.environ:
         job_id = os.getenv('JOB_ID')
         client = boto3.client('stepfunctions')
 
-        sfn_arn = get_current_sfn()
+        sfn_arn = os.getenv('CURRENT_SFN_ARN')
+
 
         most_recent_exec = get_most_recent_running_execution_arn(sfn_arn, client)
         retries=0

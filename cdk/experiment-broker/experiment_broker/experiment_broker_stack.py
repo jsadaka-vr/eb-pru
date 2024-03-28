@@ -11,7 +11,9 @@ from aws_cdk import (
     aws_kms as kms,
     aws_iam as iam,
     Aws,
+
     aws_s3_notifications as s3n,
+
 
     aws_ssm as ssm,
     aws_ecs as ecs,
@@ -38,6 +40,7 @@ class ExperimentBrokerStack(Stack):
                 "arn:aws:s3:::ebap-test",
                 "arn:aws:s3:::ebap-test/*"
             ]
+
     journal_writer_lambda_code = "../../Experiment-Broker-Module/experiment_code/jira_writer_lambda/"
     xray_api_key_secret_id = "exp-broker-jira-auth"
 
@@ -96,7 +99,9 @@ class ExperimentBrokerStack(Stack):
                                                                 "states:DescribeActivity",
                                                                 "states:ListExecutions",
                                                                 "states:DescribeExecution",
-                                                                "states:GetExecutionHistory"],
+                                                                "states:GetExecutionHistory",
+                                                                "states:StartExecution"],
+
                                                         resources = ["*"],
                                                         conditions = {"StringEquals":{"aws:ResourceTag/Type": "RegressionTesting"} }))
 
@@ -157,7 +162,7 @@ class ExperimentBrokerStack(Stack):
                             code = functions.Code.from_asset(self.trigger_lambda_code),
                             handler = "index.lambda_handler",
                             runtime=functions.Runtime.PYTHON_3_12,
-                            timeout=Duration.seconds(30),
+                            timeout=Duration.seconds(120),
                             role = self.lambda_service_role,
                             environment = {
                                 "STATE_MACHINE_ARN": state_machine.state_machine_arn,
@@ -165,6 +170,7 @@ class ExperimentBrokerStack(Stack):
                                 "EXPERIMENT_PREFIX" : self.experiment_prefix,
                                 "RESULT_PREFIX" : self.result_prefix
                             })
+
         
         jira_writer_lambda = functions.Function(self, 
                                                 f"{self.name_prefix}-jira-writer",
@@ -173,7 +179,8 @@ class ExperimentBrokerStack(Stack):
                                                 handler = "journal_writer.handler",
                                                 environment={'secret_id':self.xray_api_key_secret_id},
                                                 timeout=Duration.seconds(60),
-                                                role = self.lambda_service_role
+                                                role = self.lambda_service_role,
+                                                runtime=functions.Runtime.PYTHON_3_10
                                             )
         
         jira_writer_lambda.role.attach_inline_policy(iam.Policy(self, 'xray-integration-policy',
@@ -181,6 +188,14 @@ class ExperimentBrokerStack(Stack):
                                                                     iam.PolicyStatement(
                                                                         actions=['secretsmanager:GetSecretValue'],
                                                                         resources=[f'arn:aws:secretsmanager:*:*:secret:{self.xray_api_key_secret_id}*']
+                                                                    ),
+                                                                    iam.PolicyStatement(
+                                                                        actions=['s3:GetObject'],
+                                                                        resources=[f"{self.source_bucket.bucket_arn}/{self.result_prefix}*"]
+                                                                    ),
+                                                                    iam.PolicyStatement(
+                                                                        actions = ["kms:GenerateDataKey","kms:Encrypt","kms:Decrypt"],
+                                                                        resources = [kms_key.key_arn]
                                                                     )
                                                                 ]))
 
@@ -188,6 +203,7 @@ class ExperimentBrokerStack(Stack):
                                                   s3n.LambdaDestination(jira_writer_lambda),
                                                   s3.NotificationKeyFilter(prefix=self.result_prefix)
                                                   )
+
 
 
     def onboard_ssm_document(self, document_path):
@@ -273,6 +289,10 @@ class ExperimentBrokerStack(Stack):
                                                                                                 value=sfn.JsonPath.string_at("$.experiment_source")),
                                                                 tasks.TaskEnvironmentVariable(name="output_bucket",
                                                                                                 value=sfn.JsonPath.string_at("$.output_config.S3.bucket_name")),
+                                                                tasks.TaskEnvironmentVariable(name="jira_exec_ticket",
+                                                                                              value=sfn.JsonPath.string_at("$.jira_exec_ticket")),
+                                                                tasks.TaskEnvironmentVariable(name="jira_test_ticket",
+                                                                                                value=sfn.JsonPath.string_at("$.jira_test_ticket")),                                
                                                                 tasks.TaskEnvironmentVariable(name="output_path",
                                                                                                 value=sfn.JsonPath.string_at("$.output_config.S3.path"))]
                                                 )]).add_catch(sfn.Fail(self, f"{self.name_prefix}-processing-failed", state_name = "Processing Failed"))

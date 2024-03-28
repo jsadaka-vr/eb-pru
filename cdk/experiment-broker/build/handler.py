@@ -56,9 +56,8 @@ def handler(event, context):
     )
 
     experiment_journal = run_experiment(experiment, strategy=Strategy.DURING_METHOD, schedule=Schedule(continuous_hypothesis_frequency=15, fail_fast=True))
-    experiment_journal["jira_exec_ticket"]  = event["jira_exec_ticket"]
-    experiment_journal["jira_test_ticket"] = event["jira_test_ticket"]
-    
+    experiment_journal["jira_exec_ticket"]  = event.get("jira_exec_ticket")
+
     print("Journal contents: " + str(experiment_journal))
     if (
         experiment_journal.get("status") == "success"
@@ -69,8 +68,7 @@ def handler(event, context):
         event.update({"state": "failed"})
 
     try:
-        key = f"{event['output_path']}{experiment_source.split("/")[-1].split(".")[0]}/{datetime.now().strftime('%Y-%M-%d-%H-%M')}"
-        logger.info(f"uploading object {key}")
+        key = f"{event['output_path']}/{datetime.now().strftime('%Y-%M-%d-%H-%M')}/{experiment_source.split("/")[-1]}"
         output_s3 = put_object(
             bucket_name=event["output_bucket"],
             key=key,
@@ -102,7 +100,7 @@ def __capture_experiment_logs():
     return log_capture_string, report_capture_string
 
 if __name__ == "__main__":
-    variables = ["bucket_name", "experiment_source", "output_bucket", "output_path", "jira_exec_ticket", "jira_test_ticket"]
+    variables = ["bucket_name", "experiment_source", "output_bucket", "output_path"]
     event = {v:os.getenv(v) for v in variables}
     result = handler(event, None)
     client = boto3.client("stepfunctions")

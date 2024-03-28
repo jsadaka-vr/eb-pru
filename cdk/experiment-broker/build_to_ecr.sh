@@ -8,8 +8,9 @@ aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --
 
 python_path=$(which python)
 
-sudo "$python_path" -m build --wheel --outdir build ../../Experiment-Broker-Module/experiment_code
-sudo "$python_path" -m build --wheel --outdir build ../../vr-regression-testing
+mkdir build
+python -m build --wheel --outdir build ../../Experiment-Broker-Module/experiment_code
+python -m build --wheel --outdir build ../../vr-regression-testing
 
 cp ../../Experiment-Broker-Module/experiment_code/lambda/handler.py ./build/
 

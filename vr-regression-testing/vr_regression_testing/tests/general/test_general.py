@@ -1,9 +1,10 @@
-import time, os
+import time, os, json
+
 import logging
 import pytest
 import boto3
 from chaoslib.exceptions import ActivityFailed
-from vr_regression_testing.general.actions import copy_object_s3, block_until_complete
+from vr_regression_testing.general.actions import copy_object_s3, block_until_complete, initiate_next_sfn
 from vr_regression_testing.general.probes import watch_sfn_execution, identify_sfn_execution
 
 
@@ -84,4 +85,21 @@ def test_identify_sfn_execution_with_no_job_id():
 
 def test_identify_sfn_execution_timeout():
     os.environ['JOB_ID'] = "ABC"
+
     assert not identify_sfn_execution(retry_num=3, retry_interval=1)
+
+def test_initiate_next_sfn_exception():
+    next_sfn_param = "nonexistent_value"
+    with pytest.raises(ActivityFailed):
+        initiate_next_sfn(next_sfn_param)
+
+def test_initiate_next_sfn_payload_pass():
+    next_sfn_param = "Wait2"
+    
+    os.environ.pop("CURRENT_SFN_ARN", None)
+    os.environ.pop("CURRENT_EXECUTION_ARN", None)
+
+    initiate_next_sfn(next_sfn_param)
+    assert "CURRENT_SFN_ARN" in os.environ
+    assert "CURRENT_EXECUTION_ARN" in os.environ
+
